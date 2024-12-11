@@ -1,103 +1,154 @@
-import data from "../data/data.js";
+import bcryptjs from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
-import dotenv from 'dotenv';
-dotenv.config();
+import data, { findUserByEmail, findWorkerByEmail } from '../data/data.js';
 
-const { JWT_SECRET } = process.env;
+const register = async (req, res) => {
+    try {
+        const { first_name, last_name, email, password, telephone_number, location } = req.body;
+
+        if (!first_name || !last_name || !email || !password || !telephone_number || !location) {
+            return res.status(400).json({ ok: false, msg: "Missing required fields" });
+        }
+
+        const emailExist = findUserByEmail(email);
+        if (emailExist) {
+            return res.status(409).json({ ok: false, msg: "Email already exists" });
+        }
+
+        const salt = await bcryptjs.genSalt(10);
+        const hashedPassword = await bcryptjs.hash(password, salt);
+
+        const newUser = {
+            id: (data.user.length + 1).toString(),
+            first_name,
+            last_name,
+            email,
+            password: hashedPassword,
+            telephone_number,
+            location,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        };
+
+        data.user.push(newUser);
+
+        const token = jwt.sign(
+            { email: newUser.email },
+            process.env.JWT_SECRET,
+            { expiresIn: '1h' }
+        );
+
+        return res.status(201).json({ ok: true, token });
+    } catch (error) {
+        console.error("Registration error:", error);
+        return res.status(500).json({
+            ok: false,
+            message: "Error in user registration",
+            error: error.message
+        });
+    }
+};
+
+const login = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({ ok: false, msg: "Missing required fields: email, password" });
+        }
+
+        const user = findUserByEmail(email) || findWorkerByEmail(email);
+        if (!user) {
+            return res.status(404).json({ ok: false, msg: "User not found" });
+        }
+
+        const validPassword = await bcryptjs.compare(password, user.password);
+
+        if (!validPassword) {
+            return res.status(400).json({ ok: false, msg: "Password incorrect" });
+        }
+
+        const token = jwt.sign(
+            { email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: '1h' }
+        );
+
+        return res.status(200).json({ ok: true, token });
+    } catch (error) {
+        console.error("Login error:", error);
+        return res.status(500).json({
+            ok: false,
+            message: "Error in user login",
+            error: error.message
+        });
+    }
+};
+
+const profile = async (req, res) => {
+    try {
+        const user = findUserByEmail(req.email) || findWorkerByEmail(req.email);
+
+        if (!user) {
+            return res.status(404).json({ ok: false, message: "User not found" });
+        }
+
+        const { password, ...userWithoutPassword } = user;
+
+        return res.json({
+            ok: true,
+            user: userWithoutPassword
+        });
+    } catch (error) {
+        console.error("Profile error:", error);
+        return res.status(500).json({
+            ok: false,
+            message: "Error retrieving user profile",
+            error: error.message
+        });
+    }
+};
+
+const getAllUsers = async (req, res) => {
+    try {
+        const users = data.user.map(({ password, ...user }) => user);
+        return res.json({ ok: true, users });
+    } catch (error) {
+        console.error("Get all users error:", error);
+        return res.status(500).json({
+            ok: false,
+            message: "Error retrieving all users",
+            error: error.message
+        });
+    }
+};
+
+const getUserById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = data.user.find(user => user.id === id);
+
+        if (!user) {
+            return res.status(404).json({ ok: false, message: "User not found" });
+        }
+
+        const { password, ...userWithoutPassword } = user;
+        return res.json({ ok: true, user: userWithoutPassword });
+    } catch (error) {
+        console.error("Get user by ID error:", error);
+        return res.status(500).json({
+            ok: false,
+            message: "Error retrieving user by ID",
+            error: error.message
+        });
+    }
+};
 
 export const UserController = {
-  getAllUsers: (req, res) => {
-    try {
-      const users = data.user;
-      res.status(200).json({ ok: true, users });
-    } catch (error) {
-      res.status(500).json({ ok: false, message: error.message });
-    }
-  },
-
-  getUserById: (req, res) => {
-    try {
-      const { id } = req.params;
-      const user = data.user.find(u => u.id === id);
-      if (!user) {
-        return res.status(404).json({ ok: false, message: 'User not found' });
-      }
-      res.status(200).json({ ok: true, user });
-    } catch (error) {
-      res.status(500).json({ ok: false, message: error.message });
-    }
-  },
-
-  createUser: (req, res) => {
-    try {
-      const { first_name, last_name, telephone_number, email, location, password } = req.body;
-      const newUser = {
-        id: (data.user.length + 1).toString(),
-        first_name,
-        last_name,
-        telephone_number,
-        email,
-        location,
-        password: bcrypt.hashSync(password, 10),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      data.user.push(newUser);
-      res.status(201).json({ ok: true, user: newUser });
-    } catch (error) {
-      res.status(500).json({ ok: false, message: error.message });
-    }
-  },
-
-  updateUser: (req, res) => {
-    try {
-      const { id } = req.params;
-      const { first_name, last_name, telephone_number, email, location } = req.body;
-      const userIndex = data.user.findIndex(u => u.id === id);
-      if (userIndex === -1) {
-        return res.status(404).json({ ok: false, message: 'User not found' });
-      }
-      data.user[userIndex] = {
-        ...data.user[userIndex],
-        first_name: first_name || data.user[userIndex].first_name,
-        last_name: last_name || data.user[userIndex].last_name,
-        telephone_number: telephone_number || data.user[userIndex].telephone_number,
-        email: email || data.user[userIndex].email,
-        location: location || data.user[userIndex].location,
-        updated_at: new Date().toISOString()
-      };
-      res.status(200).json({ ok: true, user: data.user[userIndex] });
-    } catch (error) {
-      res.status(500).json({ ok: false, message: error.message });
-    }
-  },
-
-  deleteUser: (req, res) => {
-    try {
-      const { id } = req.params;
-      const userIndex = data.user.findIndex(u => u.id === id);
-      if (userIndex === -1) {
-        return res.status(404).json({ ok: false, message: 'User not found' });
-      }
-      data.user.splice(userIndex, 1);
-      res.status(200).json({ ok: true, message: 'User deleted successfully' });
-    } catch (error) {
-      res.status(500).json({ ok: false, message: error.message });
-    }
-  },
-
-  login: (req, res) => {
-    try {
-      const { email, password } = req.body;
-      const user = data.user.find(u => u.email === email);
-      if (!user || !bcrypt.compareSync(password, user.password)) {
-        return res.status(401).json({ ok: false, message: 'Invalid credentials' });
-      }
-      const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '1h' });
-      res.status(200).json({ ok: true, token });
-    } catch (error) {
-      res.status(500).json({ ok: false, message: error.message });
-    }
-  }
+    register,
+    login,
+    profile,
+    getAllUsers,
+    getUserById
 };
+
