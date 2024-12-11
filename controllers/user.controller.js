@@ -8,7 +8,7 @@ const register = async (req, res) => {
         const { first_name, last_name, email, password, telephone_number, location } = req.body;
 
         if (!first_name || !last_name || !email || !password || !telephone_number || !location) {
-            return res.status(400).json({ ok: false, msg: "Missing required fields" });
+            return res.status(400).json({ ok: false, msg: "Missing required fieldss" });
         }
 
         const emailExist = findUserByEmail(email);
