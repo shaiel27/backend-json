@@ -1,7 +1,7 @@
-import express from 'express';
+import express from 'express'
 import dotenv from 'dotenv';
-import userRoutes from './routes/user.route.js';
-import workerRoutes from './routes/worker.route.js';
+import userRoutes from './src/routes/user.route.js';
+import workerRoutes from './src/routes/worker.route.js';
 
 dotenv.config();
 
